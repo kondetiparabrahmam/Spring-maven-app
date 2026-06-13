@@ -11,7 +11,8 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  INSTANCE_ID: i-0fba03625b70f56a7
+  INSTANCE_ID: i-05a4ea1f4f777577d
+  S3_BUCKET: springboot-deploy-a1b2c3d4   # 👈 YOUR REAL BUCKET NAME
 
 jobs:
   deploy:
@@ -36,10 +37,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ✅ Upload JAR to EC2 via SSM (NO external URL needed)
-      - name: Deploy via SSM (FIXED)
+      - name: Upload + Deploy via SSM
         run: |
           JAR_FILE=$(ls target/*.jar | head -n 1)
+
+          aws s3 cp $JAR_FILE s3://$S3_BUCKET/app.jar
 
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
@@ -48,8 +50,7 @@ jobs:
             --parameters "commands=[
               \"mkdir -p /home/ubuntu/app\",
               \"pkill -f app.jar || true\",
-              \"aws s3 cp $JAR_FILE s3://YOUR_BUCKET/app.jar\",
-              \"aws s3 cp s3://YOUR_BUCKET/app.jar /home/ubuntu/app/app.jar\",
+              \"aws s3 cp s3://$S3_BUCKET/app.jar /home/ubuntu/app/app.jar\",
               \"nohup java -jar /home/ubuntu/app/app.jar --server.address=0.0.0.0 --server.port=8080 > /home/ubuntu/app/app.log 2>&1 &\"
             ]" \
             --region $AWS_REGION
