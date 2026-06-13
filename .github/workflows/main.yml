@@ -22,33 +22,37 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup Java
+    - name: Setup Java 17
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: '17'
+        java-version: "17"
 
     - name: Build Maven Project
       run: mvn clean package -DskipTests
 
+    # ✅ FIXED OIDC STEP (MOST IMPORTANT)
     - name: Configure AWS Credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Copy JAR to EC2 using SSM (Base64)
+    - name: Prepare JAR file
       run: |
         JAR_FILE=$(ls target/*.jar | head -n 1)
+        base64 "$JAR_FILE" | tr -d '\n' > app.jar.b64
 
-        BASE64_JAR=$(base64 -w 0 "$JAR_FILE")
+    - name: Deploy to EC2 using SSM
+      run: |
+        JAR_CONTENT=$(cat app.jar.b64)
 
         aws ssm send-command \
           --instance-ids "${{ env.INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
           --comment "Deploy Spring Boot App" \
           --parameters "commands=[
-            \"echo '$BASE64_JAR' | base64 -d > /home/ec2-user/app/app.jar\",
+            \"echo '$JAR_CONTENT' | base64 -d > /home/ec2-user/app/app.jar\",
             \"sudo systemctl restart spring-app\",
             \"sudo systemctl status spring-app\"
           ]" \
