@@ -1,4 +1,4 @@
-name: Full EC2 Create + Deploy Spring Boot (OIDC + SSM)
+name: Create EC2 + Deploy Spring Boot via OIDC + SSM
 
 on:
   push:
@@ -15,7 +15,7 @@ env:
   KEY_NAME: my-key
   SECURITY_GROUP_ID: sg-xxxxxxxx
   SUBNET_ID: subnet-xxxxxxxx
-  IAM_INSTANCE_PROFILE: EC2-SSM-Role
+  INSTANCE_PROFILE: githubactions
 
 jobs:
   deploy:
@@ -32,7 +32,7 @@ jobs:
         distribution: temurin
         java-version: "17"
 
-    - name: Build Spring Boot Jar
+    - name: Build Jar
       run: mvn clean package -DskipTests
 
     # 🔐 OIDC LOGIN
@@ -42,14 +42,14 @@ jobs:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # 🟢 CREATE EC2 INSTANCE
+    # 🟢 CREATE EC2 INSTANCE (FIXED INSTANCE PROFILE)
     - name: Create EC2 Instance
       id: ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
           --image-id ami-0f5ee92e2d63afc18 \
           --instance-type $INSTANCE_TYPE \
-          --iam-instance-profile Name=$IAM_INSTANCE_PROFILE \
+          --iam-instance-profile Name=$INSTANCE_PROFILE \
           --key-name $KEY_NAME \
           --security-group-ids $SECURITY_GROUP_ID \
           --subnet-id $SUBNET_ID \
@@ -59,25 +59,22 @@ jobs:
 
         echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
-    # ⏳ WAIT FOR INSTANCE TO BE READY
+    # ⏳ WAIT FOR EC2
     - name: Wait for EC2 Running
-      run: |
-        aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+      run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-    # 🟢 WAIT FOR SSM TO BE READY
-    - name: Wait for SSM Registration
+    # ⏳ WAIT FOR SSM
+    - name: Wait for SSM
       run: sleep 60
 
-    # 🚀 DEPLOY SPRING BOOT VIA SSM
-    - name: Deploy via SSM
+    # 🚀 DEPLOY VIA SSM
+    - name: Deploy Spring Boot via SSM
       run: |
         aws ssm send-command \
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --comment "Deploy Spring Boot App" \
           --parameters 'commands=[
-            "sudo yum update -y || true",
-            "sudo mkdir -p /home/ec2-user/app",
+            "mkdir -p /home/ec2-user/app",
             "curl -L -o /home/ec2-user/app/app.jar https://github.com/kondetiparabrahmam/spring-maven-app/releases/latest/download/app.jar",
             "sudo systemctl restart spring-app"
           ]' \
