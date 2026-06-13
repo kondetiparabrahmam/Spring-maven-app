@@ -11,7 +11,7 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  INSTANCE_ID: i-00d880e45d161945f
+  INSTANCE_ID: i-0fba03625b70f56a7
 
 jobs:
   deploy:
