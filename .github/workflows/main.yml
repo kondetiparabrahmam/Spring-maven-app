@@ -1,4 +1,4 @@
-name: Create EC2 + Deploy Spring Boot via OIDC + SSM
+name: Create EC2 + Auto IAM Profile + Deploy Spring Boot (OIDC + SSM)
 
 on:
   push:
@@ -15,6 +15,7 @@ env:
   KEY_NAME: my-key
   SECURITY_GROUP_ID: sg-xxxxxxxx
   SUBNET_ID: subnet-xxxxxxxx
+  ROLE_NAME: githubactions
   INSTANCE_PROFILE: githubactions
 
 jobs:
@@ -32,7 +33,7 @@ jobs:
         distribution: temurin
         java-version: "17"
 
-    - name: Build Jar
+    - name: Build Spring Boot Jar
       run: mvn clean package -DskipTests
 
     # 🔐 OIDC LOGIN
@@ -42,9 +43,25 @@ jobs:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # 🟢 CREATE EC2 INSTANCE (FIXED INSTANCE PROFILE)
+    # 🟢 CREATE INSTANCE PROFILE (IF NOT EXISTS)
+    - name: Create IAM Instance Profile
+      run: |
+        aws iam create-instance-profile \
+          --instance-profile-name $INSTANCE_PROFILE || true
+
+    # 🟢 ATTACH ROLE TO INSTANCE PROFILE
+    - name: Attach Role to Instance Profile
+      run: |
+        aws iam add-role-to-instance-profile \
+          --instance-profile-name $INSTANCE_PROFILE \
+          --role-name $ROLE_NAME || true
+
+    # ⏳ WAIT FOR IAM PROPAGATION
+    - name: Wait for IAM propagation
+      run: sleep 20
+
+    # 🟢 CREATE EC2 INSTANCE
     - name: Create EC2 Instance
-      id: ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
           --image-id ami-0f5ee92e2d63afc18 \
@@ -64,7 +81,7 @@ jobs:
       run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
     # ⏳ WAIT FOR SSM
-    - name: Wait for SSM
+    - name: Wait for SSM Agent
       run: sleep 60
 
     # 🚀 DEPLOY VIA SSM
