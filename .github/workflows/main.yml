@@ -1,4 +1,4 @@
-name: Create EC2 + Auto IAM Profile + Deploy Spring Boot (OIDC + SSM)
+name: Create EC2 + Deploy Spring Boot (OIDC + SSM)
 
 on:
   push:
@@ -15,7 +15,6 @@ env:
   KEY_NAME: my-key
   SECURITY_GROUP_ID: sg-xxxxxxxx
   SUBNET_ID: subnet-xxxxxxxx
-  ROLE_NAME: githubactions
   INSTANCE_PROFILE: githubactions
 
 jobs:
@@ -27,40 +26,21 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup Java 17
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: "17"
 
-    - name: Build Spring Boot Jar
+    - name: Build Jar
       run: mvn clean package -DskipTests
 
-    # 🔐 OIDC LOGIN
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # 🟢 CREATE INSTANCE PROFILE (IF NOT EXISTS)
-    - name: Create IAM Instance Profile
-      run: |
-        aws iam create-instance-profile \
-          --instance-profile-name $INSTANCE_PROFILE || true
-
-    # 🟢 ATTACH ROLE TO INSTANCE PROFILE
-    - name: Attach Role to Instance Profile
-      run: |
-        aws iam add-role-to-instance-profile \
-          --instance-profile-name $INSTANCE_PROFILE \
-          --role-name $ROLE_NAME || true
-
-    # ⏳ WAIT FOR IAM PROPAGATION
-    - name: Wait for IAM propagation
-      run: sleep 20
-
-    # 🟢 CREATE EC2 INSTANCE
     - name: Create EC2 Instance
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
@@ -70,22 +50,18 @@ jobs:
           --key-name $KEY_NAME \
           --security-group-ids $SECURITY_GROUP_ID \
           --subnet-id $SUBNET_ID \
-          --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=springboot-app}]' \
           --query 'Instances[0].InstanceId' \
           --output text)
 
         echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
-    # ⏳ WAIT FOR EC2
-    - name: Wait for EC2 Running
+    - name: Wait for EC2
       run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-    # ⏳ WAIT FOR SSM
-    - name: Wait for SSM Agent
+    - name: Wait for SSM
       run: sleep 60
 
-    # 🚀 DEPLOY VIA SSM
-    - name: Deploy Spring Boot via SSM
+    - name: Deploy via SSM
       run: |
         aws ssm send-command \
           --instance-ids "$INSTANCE_ID" \
