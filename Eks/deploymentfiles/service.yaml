@@ -1,1 +1,11 @@
+apiversion: v1
+kind: service
+metadata:
+      name: my-app
+spec:
+selector:
+       app: my-app
+- port: 8080
+   targetport: 8080
+   type: Loadbalencer
 
