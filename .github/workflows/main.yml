@@ -1,4 +1,4 @@
-name: Deploy to EC2 via OIDC + SSM
+name: Deploy Spring Boot to EC2 via OIDC + SSM
 
 on:
   push:
@@ -28,29 +28,27 @@ jobs:
         distribution: temurin
         java-version: '17'
 
-    - name: Build Jar
+    - name: Build Maven Project
       run: mvn clean package -DskipTests
 
-    - name: Configure AWS credentials (OIDC)
+    - name: Configure AWS Credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Encode JAR file
+    - name: Copy JAR to EC2 using SSM (Base64)
       run: |
-        base64 target/*.jar > app.jar.b64
+        JAR_FILE=$(ls target/*.jar | head -n 1)
 
-    - name: Deploy via SSM (no S3)
-      run: |
-        JAR_CONTENT=$(cat app.jar.b64)
+        BASE64_JAR=$(base64 -w 0 "$JAR_FILE")
 
         aws ssm send-command \
           --instance-ids "${{ env.INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
           --comment "Deploy Spring Boot App" \
           --parameters "commands=[
-            \"echo '$JAR_CONTENT' | base64 -d > /home/ec2-user/app/app.jar\",
+            \"echo '$BASE64_JAR' | base64 -d > /home/ec2-user/app/app.jar\",
             \"sudo systemctl restart spring-app\",
             \"sudo systemctl status spring-app\"
           ]" \
