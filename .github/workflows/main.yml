@@ -1,72 +1,60 @@
 name: Deploy Spring Boot to EC2 via OIDC + SSM
 
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 permissions:
-id-token: write
-contents: read
+  id-token: write
+  contents: read
 
 env:
-AWS_REGION: ap-south-1
-INSTANCE_ID: i-079e247ee04788721
+  AWS_REGION: ap-south-1
+  INSTANCE_ID: i-079e247ee04788721
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Checkout Code
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-  - name: Setup Java
-    uses: actions/setup-java@v4
-    with:
-      distribution: temurin
-      java-version: "17"
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-  - name: Build Application
-    run: mvn clean package -DskipTests
+      - name: Build Application
+        run: mvn clean package -DskipTests
 
-  - name: Configure AWS Credentials (OIDC)
-    uses: aws-actions/configure-aws-credentials@v4
-    with:
-      role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-      aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-  - name: Verify AWS Identity
-    run: aws sts get-caller-identity
+      - name: Upload JAR to EC2 via SSM
+        run: |
+          JAR_FILE=$(ls target/*.jar | head -n 1)
 
-  - name: Check SSM Connectivity
-    run: |
-      aws ssm describe-instance-information \
-        --region $AWS_REGION
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              \"mkdir -p /home/ubuntu/app\",
+              \"pkill -f app.jar || true\",
+              \"aws s3 cp $JAR_FILE s3://YOUR_BUCKET/app.jar\",
+              \"aws s3 cp s3://YOUR_BUCKET/app.jar /home/ubuntu/app/app.jar\",
+              \"nohup java -jar /home/ubuntu/app/app.jar > /home/ubuntu/app/app.log 2>&1 &\"
+            ]" \
+            --region $AWS_REGION
 
-  - name: Deploy Application
-    run: |
-      COMMAND_ID=$(aws ssm send-command \
-        --instance-ids "$INSTANCE_ID" \
-        --document-name "AWS-RunShellScript" \
-        --parameters '{
-          "commands":[
-            "sudo mkdir -p /home/ubuntu/app",
-            "sudo pkill -f app.jar || true",
-            "echo Deployment Started"
-          ]
-        }' \
-        --query "Command.CommandId" \
-        --output text \
-        --region $AWS_REGION)
-
-      echo "Command ID: $COMMAND_ID"
-
-  - name: Verify Instance Status
-    run: |
-      aws ssm describe-instance-information \
-        --region $AWS_REGION \
-        --query "InstanceInformationList[*].[InstanceId,PingStatus]" \
-        --output table
-```
+      - name: Verify Instance Status
+        run: |
+          aws ssm describe-instance-information \
+            --region $AWS_REGION \
+            --query "InstanceInformationList[*].[InstanceId,PingStatus]" \
+            --output table
