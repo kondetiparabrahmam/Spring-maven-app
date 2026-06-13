@@ -36,14 +36,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ✅ Upload jar to GitHub artifact storage (temporary public URL alternative avoided)
-      - name: Prepare JAR
+      # ✅ Upload JAR to EC2 via SSM (NO external URL needed)
+      - name: Deploy via SSM (FIXED)
         run: |
-          mkdir -p artifact
-          cp target/*.jar artifact/app.jar
+          JAR_FILE=$(ls target/*.jar | head -n 1)
 
-      - name: Deploy via SSM (download + run)
-        run: |
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -51,8 +48,9 @@ jobs:
             --parameters "commands=[
               \"mkdir -p /home/ubuntu/app\",
               \"pkill -f app.jar || true\",
-              \"wget -O /home/ubuntu/app/app.jar https://YOUR_PUBLIC_JAR_URL/app.jar || true\",
-              \"nohup java -jar /home/ubuntu/app/app.jar > /home/ubuntu/app/app.log 2>&1 &\"
+              \"aws s3 cp $JAR_FILE s3://YOUR_BUCKET/app.jar\",
+              \"aws s3 cp s3://YOUR_BUCKET/app.jar /home/ubuntu/app/app.jar\",
+              \"nohup java -jar /home/ubuntu/app/app.jar --server.address=0.0.0.0 --server.port=8080 > /home/ubuntu/app/app.log 2>&1 &\"
             ]" \
             --region $AWS_REGION
 
