@@ -1,22 +1,21 @@
-name: Build and Deploy to EKS
+name: Deploy to EC2 via OIDC + SSM
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
   AWS_REGION: ap-south-1
-  ECR_REPOSITORY: my-java-app
-  EKS_CLUSTER_NAME: my-eks-cluster
+  INSTANCE_ID: i-094848138c2885f37
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
 
@@ -32,39 +31,27 @@ jobs:
     - name: Build Jar
       run: mvn clean package -DskipTests
 
-    - name: Configure AWS Credentials
+    - name: Configure AWS credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-
-    - name: Build Docker Image
+    - name: Encode JAR file
       run: |
-        docker build -t $ECR_REPOSITORY:${{ github.sha }} .
+        base64 target/*.jar > app.jar.b64
 
-    - name: Tag Image
+    - name: Deploy via SSM (no S3)
       run: |
-        docker tag $ECR_REPOSITORY:${{ github.sha }} \
-        ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
+        JAR_CONTENT=$(cat app.jar.b64)
 
-    - name: Push Image
-      run: |
-        docker push \
-        ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
-
-    - name: Update kubeconfig
-      run: |
-        aws eks update-kubeconfig \
-        --region $AWS_REGION \
-        --name $EKS_CLUSTER_NAME
-
-    - name: Deploy to EKS
-      run: |
-        kubectl set image deployment/myapp \
-        myapp=${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
-
-        kubectl rollout status deployment/myapp
+        aws ssm send-command \
+          --instance-ids "${{ env.INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy Spring Boot App" \
+          --parameters "commands=[
+            \"echo '$JAR_CONTENT' | base64 -d > /home/ec2-user/app/app.jar\",
+            \"sudo systemctl restart spring-app\",
+            \"sudo systemctl status spring-app\"
+          ]" \
+          --region $AWS_REGION
