@@ -36,7 +36,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload JAR to EC2 via SSM
+      - name: Copy JAR to EC2 via SSM
         run: |
           JAR_FILE=$(ls target/*.jar | head -n 1)
 
@@ -46,15 +46,7 @@ jobs:
             --parameters "commands=[
               \"mkdir -p /home/ubuntu/app\",
               \"pkill -f app.jar || true\",
-              \"aws s3 cp $JAR_FILE s3://YOUR_BUCKET/app.jar\",
-              \"aws s3 cp s3://YOUR_BUCKET/app.jar /home/ubuntu/app/app.jar\",
+              \"cat > /home/ubuntu/app/app.jar\" < $JAR_FILE,
               \"nohup java -jar /home/ubuntu/app/app.jar > /home/ubuntu/app/app.log 2>&1 &\"
             ]" \
             --region $AWS_REGION
-
-      - name: Verify Instance Status
-        run: |
-          aws ssm describe-instance-information \
-            --region $AWS_REGION \
-            --query "InstanceInformationList[*].[InstanceId,PingStatus]" \
-            --output table
