@@ -31,14 +31,14 @@ jobs:
     - name: Build Maven Project
       run: mvn clean package -DskipTests
 
-    # ✅ FIXED OIDC STEP (MOST IMPORTANT)
-    - name: Configure AWS Credentials (OIDC)
+    # 🔐 OIDC AUTH (THIS IS CRITICAL)
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Prepare JAR file
+    - name: Encode JAR
       run: |
         JAR_FILE=$(ls target/*.jar | head -n 1)
         base64 "$JAR_FILE" | tr -d '\n' > app.jar.b64
