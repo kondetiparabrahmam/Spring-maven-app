@@ -1,1 +1,25 @@
-
+apiversion: app/v1
+kind: deployment
+metadata:
+     name: my-app
+spec:
+   replicas:1
+   selector:
+   matchlables:
+          app: my-app
+       template:
+             metadata:
+                  lables:
+                       app: my-app
+                       spec:
+                          containers:
+                                  - name: my-container
+                                    image: URI
+                                    ports:
+                                    - containerports: 8080
+                                    
+                                    
+                                   
+                                   
+                                   
+        
