@@ -11,7 +11,7 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  INSTANCE_ID: i-079e247ee04788721
+  INSTANCE_ID: i-0bd5cf6fee5eb298c
 
 jobs:
   deploy:
@@ -27,7 +27,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Build Application
+      - name: Build Spring Boot App
         run: mvn clean package -DskipTests
 
       - name: Configure AWS Credentials (OIDC)
@@ -36,17 +36,30 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Copy JAR to EC2 via SSM
+      - name: Copy JAR + Deploy via SSM
         run: |
           JAR_FILE=$(ls target/*.jar | head -n 1)
 
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
+            --comment "Deploy Spring Boot App" \
             --parameters "commands=[
-              \"mkdir -p /home/ubuntu/app\",
               \"pkill -f app.jar || true\",
-              \"cat > /home/ubuntu/app/app.jar\" < $JAR_FILE,
+              \"mkdir -p /home/ubuntu/app\",
+              \"rm -f /home/ubuntu/app/app.jar\",
+              \"cat > /home/ubuntu/app/app.jar << 'EOF'\",
+              \"$(base64 -w 0 $JAR_FILE)\",
+              \"EOF\",
+              \"base64 -d /home/ubuntu/app/app.jar > /home/ubuntu/app/app-real.jar || true\",
+              \"mv /home/ubuntu/app/app-real.jar /home/ubuntu/app/app.jar || true\",
               \"nohup java -jar /home/ubuntu/app/app.jar > /home/ubuntu/app/app.log 2>&1 &\"
             ]" \
             --region $AWS_REGION
+
+      - name: Verify Instance Status
+        run: |
+          aws ssm describe-instance-information \
+            --region $AWS_REGION \
+            --query "InstanceInformationList[*].[InstanceId,PingStatus]" \
+            --output table
