@@ -11,8 +11,8 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  INSTANCE_ID: i-05a4ea1f4f777577d
-  S3_BUCKET: springboot-deploy-a1b2c3d4   # 👈 YOUR REAL BUCKET NAME
+  INSTANCE_ID: i-004d509b92539c395
+  S3_BUCKET: my-github-actions-artifacts-bucket   # 👈 YOUR REAL BUCKET NAME
 
 jobs:
   deploy:
